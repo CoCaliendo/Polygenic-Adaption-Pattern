@@ -1,0 +1,36 @@
+#purpose of this pipeline is to simulate data and then compare 5 approacxhes:
+# 1) OCSVM
+# 2) Naive Bayseain Classifier (NBC)
+# 3) Fisher's Exakt Test (FET)
+# 4) OCSVM-FET
+# 5) NBC-FET
+
+# simulation with mimicree2
+python3 automate_simulations.py --mimhap haplofile.mimhap --n_values 10 50 100 250 500 --f 0.15 --effect_file effect-size-file --heritability 0.8 --snapshots 10,20,40,60 --replicate_runs 10 --selection_regime truncating_05.txt --threads 6 --generations 0 10 20 40 60 --replicates 10 10 10 10 10 --num_repeats 10
+
+
+#process simulation to anomalies: ocsvm radial in Python and Bash
+bash run_parallel_ocsvm.sh (e.g. for n=10 only) 
+
+#process the NBC data in Python
+#python3 nbc.py 
+
+# process the FET data in R
+Rscript FET_mainscript.R input.sync output_prefix "0,10,20,40,60" "1,2,3,4,5" 10
+
+command-line arguments are:
+
+    input.sync: The sync file to process.
+    output_prefix: The prefix for output file names.
+    "0,10,20,40,60": The generations to compare (ensure the format with 0 included).
+    "1,2,3,4,5": Replicate counts.
+    10: The n_value you are currently processing.
+
+# or using in combination with BASH to automize process even more:
+# bash automize_FET.sh
+
+# Getting comparable metrices like AUC/ROC, Accuracy, FPR from outputdata
+python3 gettin_AUC_ACC_FPR_fromOCSVM.py
+
+Plotting results
+plot_script.ipynb
