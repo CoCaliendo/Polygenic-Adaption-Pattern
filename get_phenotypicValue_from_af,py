@@ -1,0 +1,133 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
+def read_effect_file(file_path):
+    """Read the effect size file."""
+    return pd.read_csv(file_path, sep='\s+', header=None, 
+                       names=['effect_size', 'initial_frequency'])
+
+def read_af_file(file_path):
+    """Read an allele frequency file."""
+    return pd.read_csv(file_path, sep='\s+', header=None)
+
+def sample_effect_sizes(effect_data, n_loci):
+    """Randomly sample effect sizes and initial frequencies."""
+    return effect_data.sample(n=n_loci, replace=True).reset_index(drop=True)
+
+def calculate_phenotype(af_array, effect_sizes, heritability=0.8):
+    """Calculate phenotypic values from allele frequencies and effect sizes."""
+    genetic_component = np.dot(af_array, effect_sizes)
+    genetic_variance = np.var(genetic_component)
+    environmental_variance = genetic_variance * (1 - heritability) / heritability
+    environmental_component = np.random.normal(0, np.sqrt(environmental_variance), len(genetic_component))
+    return genetic_component + environmental_component
+
+def calculate_optimum(effect_sizes, method='sum_positive', user_defined=None, scale_factor=1.0):
+    """
+    Calculate the phenotypic optimum using various methods.
+    
+    :param effect_sizes: Array of effect sizes
+    :param method: Method to use for calculation ('sum_positive', 'sum_all', 'user_defined')
+    :param user_defined: User-defined optimum value (used if method is 'user_defined')
+    :param scale_factor: Factor to scale the sum of effect sizes
+    :return: Calculated optimum value
+    """
+    if method == 'sum_positive':
+        return np.sum(np.maximum(effect_sizes, 0)) * scale_factor
+    elif method == 'sum_all':
+        return np.sum(effect_sizes) * scale_factor
+    elif method == 'user_defined':
+        if user_defined is None:
+            raise ValueError("User-defined optimum must be provided when using 'user_defined' method")
+        return user_defined
+    else:
+        raise ValueError(f"Unknown method: {method}")
+
+def analyze_scenario(effect_data, af_data, n_loci, heritability=0.8, optimum_method='sum_positive', user_defined_optimum=None, optimum_scale_factor=1.0):
+    """Analyze a single scenario (number of selected loci)."""
+    sampled_effect_data = sample_effect_sizes(effect_data, n_loci)
+    effect_sizes = sampled_effect_data['effect_size'].values
+    initial_frequencies = sampled_effect_data['initial_frequency'].values
+    
+    phenotypic_values = calculate_phenotype(af_data.values, effect_sizes, heritability)
+    optimum = calculate_optimum(effect_sizes, method=optimum_method, 
+                                user_defined=user_defined_optimum, 
+                                scale_factor=optimum_scale_factor)
+    
+    return phenotypic_values, optimum, effect_sizes, initial_frequencies
+
+def plot_scenario_results(phenotypic_values, optimum, effect_sizes, af_data, initial_frequencies, n_loci):
+    """Plot results for a single scenario."""
+    generations = len(phenotypic_values)
+    
+    fig, axs = plt.subplots(2, 2, figsize=(15, 15))
+    
+    # Plot phenotypic values over time
+    axs[0, 0].plot(range(generations), phenotypic_values)
+    axs[0, 0].axhline(y=optimum, color='r', linestyle='--', label='Optimum')
+    axs[0, 0].set_xlabel('Generation')
+    axs[0, 0].set_ylabel('Phenotypic value')
+    axs[0, 0].set_title(f'Phenotypic Values Over Time ({n_loci} loci)')
+    axs[0, 0].legend()
+    
+    # Plot effect size distribution
+    sns.histplot(effect_sizes, ax=axs[0, 1], kde=True)
+    axs[0, 1].set_xlabel('Effect size')
+    axs[0, 1].set_ylabel('Count')
+    axs[0, 1].set_title(f'Distribution of Effect Sizes ({n_loci} loci)')
+    
+    # Plot allele frequency changes
+    for i in range(min(n_loci, n_loci)):  # Plot up to 10 loci to avoid overcrowding
+        axs[1, 0].plot(range(generations), af_data.iloc[:, i], alpha=0.5)
+    axs[1, 0].set_xlabel('Generation')
+    axs[1, 0].set_ylabel('Allele Frequency')
+    axs[1, 0].set_title(f'Allele Frequency Changes Over Time ({n_loci} loci)')
+    
+    # Plot relationship between effect size and total allele frequency change
+    initial_af = af_data.iloc[0, :]
+    final_af = af_data.iloc[-1, :]
+    af_change = final_af - initial_af
+    axs[1, 1].scatter(effect_sizes, af_change)
+    axs[1, 1].set_xlabel('Effect Size')
+    axs[1, 1].set_ylabel('Total Allele Frequency Change')
+    axs[1, 1].set_title(f'Effect Size vs Total AF Change ({n_loci} loci)')
+    
+    plt.tight_layout()
+    #plt.show()
+    
+
+def main():
+    effect_file_path = 'effect_size3.txt'
+    effect_data = read_effect_file(effect_file_path)
+    
+    scenarios = [10, 50, 100, 250, 500]
+    for n_loci in scenarios:
+        af_file_path = f'allele_frequencies_{n_loci}.txt'
+        af_data = read_af_file(af_file_path)
+        
+        phenotypic_values, optimum, effect_sizes, initial_frequencies = analyze_scenario(effect_data, af_data, n_loci)
+        plot_scenario_results(phenotypic_values, optimum, effect_sizes, af_data, initial_frequencies, n_loci)
+        for n_loci in scenarios:
+            af_file_path = f'allele_frequencies_{n_loci}.txt'
+            try:
+                af_data = read_af_file(af_file_path)
+                phenotypic_values, optimum, effect_sizes, initial_frequencies = analyze_scenario(
+                    effect_data, af_data, n_loci, 
+                    optimum_method='sum_positive',  # or 'sum_all', or 'user_defined'
+                    user_defined_optimum=None,  # Specify a value if using 'user_defined' method
+                    optimum_scale_factor=1.0  # Adjust this if you want to scale the optimum
+                )
+                plot_scenario_results(phenotypic_values, optimum, effect_sizes, af_data, initial_frequencies, n_loci)
+                
+            except FileNotFoundError:
+                print(f"Allele frequency file for {n_loci} loci not found. Skipping this scenario.")
+            except ValueError as e:
+                print(f"Error in scenario with {n_loci} loci: {str(e)}")
+
+
+if __name__ == "__main__":
+    main()
+    
